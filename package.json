@@ -1,0 +1,16 @@
+{
+  "name": "purescript-crapi",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "purescript": "^0.13.2",
+    "purescript-psa": "^0.7.3",
+    "rimraf": "^3.0.0",
+    "spago": "^0.9.0"
+  },
+  "scripts": {
+    "build": "spago build",
+    "clean": "rimraf output"
+  }
+}
