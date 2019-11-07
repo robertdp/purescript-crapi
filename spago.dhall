@@ -5,12 +5,12 @@ You can edit this file as you like.
 { name =
     "my-project"
 , dependencies =
-    [ "aff"
-    , "console"
-    , "foreign-generic"
-    , "http-methods"
+    [ "console"
+    , "effect"
+    , "indexed-monad"
+    , "media-types"
     , "node-http"
-    , "record"
+    , "simple-json"
     ]
 , packages =
     ./packages.dhall
