@@ -1,7 +1,6 @@
 module Crapi.Router (Router, createServer, on) where
 
 import Prelude
-
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn3, runEffectFn4)

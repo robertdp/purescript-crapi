@@ -119,15 +119,9 @@ let additions =
 
 
 let upstream =
-      https://github.com/purescript/package-sets/releases/download/psc-0.13.4-20191025/packages.dhall sha256:f9eb600e5c2a439c3ac9543b1f36590696342baedab2d54ae0aa03c9447ce7d4
+      https://github.com/purescript/package-sets/releases/download/psc-0.13.4-20191110/packages.dhall sha256:563a7f694e18e6399f7f6d01f5b7e3c3345781655d99945768f48e458feb93a4
 
-let overrides =
-    { typelevel-prelude =
-        { dependencies = [ "prelude", "proxy", "type-equality" ]
-        , repo = "https://github.com/purescript/purescript-typelevel-prelude.git"
-        , version = "v5.0.1"
-        }
-    }
+let overrides = {=}
 
 let additions = {=}
 

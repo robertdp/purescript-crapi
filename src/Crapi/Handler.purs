@@ -1,7 +1,6 @@
 module Crapi.Handler where
 
 import Prelude
-
 import Control.Applicative.Indexed (class IxApplicative, iapply, imap, ipure)
 import Control.Apply.Indexed (class IxApply)
 import Control.Bind.Indexed (class IxBind, ibind)
@@ -10,7 +9,7 @@ import Control.Monad.Indexed.Trans (class IxMonadTrans)
 import Data.Functor.Indexed (class IxFunctor)
 import Node.HTTP (Response)
 
-newtype Handler (res :: # Type) m from to a
+newtype Handler (res :: #Type) m from to a
   = Handler (Response -> m a)
 
 runHandler :: forall res m from to a. Handler res m from to a -> Response -> m a
