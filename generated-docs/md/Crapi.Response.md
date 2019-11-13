@@ -75,55 +75,32 @@ send :: forall res m. MonadEffect m => String -> Handler res m BodyOpen Response
 #### `respondWithMedia`
 
 ``` purescript
-respondWithMedia :: forall a res m. IsMedia a => MonadEffect m => Status -> a -> Handler res m StatusLineOpen ResponseEnded Unit
+respondWithMedia :: forall m rep a res. MediaCodec rep a => MonadEffect m => Status -> Proxy rep -> a -> Handler res m StatusLineOpen ResponseEnded Unit
 ```
 
-#### `respondOK`
+#### `BuildResponder`
 
 ``` purescript
-respondOK :: forall a res m. IsMedia a => MonadEffect m => a -> Handler (ok :: a | res) m StatusLineOpen ResponseEnded Unit
+class BuildResponder rep a | rep -> a where
+  buildResponder :: Proxy rep -> a
 ```
 
-#### `respondCreated`
-
+##### Instances
 ``` purescript
-respondCreated :: forall a res m. IsMedia a => MonadEffect m => a -> Handler (created :: a | res) m StatusLineOpen ResponseEnded Unit
+(RowToList responses responseList, MonadEffect m, BuildResponderRecord responseList m responders) => BuildResponder (Record responses) (Record responders)
 ```
 
-#### `respondNoContent`
+#### `BuildResponderRecord`
 
 ``` purescript
-respondNoContent :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (noContent :: a | res) m StatusLineOpen ResponseEnded Unit
+class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: # Type) | responses -> m responders where
+  buildResponderRecord :: RLProxy responses -> Builder (Record ()) (Record responders)
 ```
 
-#### `respondBadRequest`
-
+##### Instances
 ``` purescript
-respondBadRequest :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (badRequest :: a | res) m StatusLineOpen ResponseEnded Unit
-```
-
-#### `respondUnauthorized`
-
-``` purescript
-respondUnauthorized :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (unauthorized :: a | res) m StatusLineOpen ResponseEnded Unit
-```
-
-#### `respondForbidden`
-
-``` purescript
-respondForbidden :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (forbidden :: a | res) m StatusLineOpen ResponseEnded Unit
-```
-
-#### `respondNotFound`
-
-``` purescript
-respondNotFound :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (notFound :: a | res) m StatusLineOpen ResponseEnded Unit
-```
-
-#### `respondConflict`
-
-``` purescript
-respondConflict :: forall m res a. IsMedia a => MonadEffect m => a -> Handler (conflict :: a | res) m StatusLineOpen ResponseEnded Unit
+BuildResponderRecord Nil m ()
+(IsSymbol status, ResponseStatus status, MediaCodec responseRep response, Cons status responseRep res' res, MonadEffect m, Lacks status responders', Cons status (response -> Handler res m StatusLineOpen ResponseEnded Unit) responders' responders, BuildResponderRecord responseList m responders') => BuildResponderRecord (Cons status responseRep responseList) m responders
 ```
 
 

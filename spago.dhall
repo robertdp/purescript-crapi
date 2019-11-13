@@ -5,12 +5,9 @@ You can edit this file as you like.
 { name =
     "my-project"
 , dependencies =
-    [ "console"
-    , "effect"
+    [ "apiary"
     , "indexed-monad"
-    , "media-types"
     , "node-http"
-    , "simple-json"
     ]
 , packages =
     ./packages.dhall

@@ -1,19 +1,24 @@
 module Crapi.Response where
 
 import Prelude
+import Apiary.Media (class MediaCodec, encodeMedia, mediaType)
+import Apiary.Status (class ResponseStatus, Status(..), toStatus)
 import Control.Monad.Indexed.Qualified as Ix
 import Crapi.Handler (Handler(..))
-import Crapi.Media (class IsMedia, encodeMedia, mediaType)
-import Crapi.Status (Status(..))
-import Crapi.Status as Status
 import Data.Foldable (class Foldable, traverse_)
 import Data.MediaType (MediaType)
 import Data.Newtype (unwrap)
+import Data.Symbol (class IsSymbol, SProxy(..))
 import Data.Tuple (Tuple, uncurry)
 import Effect.Class (class MonadEffect, liftEffect)
 import Node.Encoding as Encoding
 import Node.HTTP as HTTP
 import Node.Stream as Stream
+import Prim.Row (class Cons, class Lacks)
+import Prim.RowList (class RowToList, kind RowList, Cons, Nil)
+import Record.Builder (Builder)
+import Record.Builder as Builder
+import Type.Data.RowList (RLProxy(..))
 import Type.Proxy (Proxy(..))
 
 data StatusLineOpen
@@ -28,11 +33,11 @@ type Header
   = Tuple String String
 
 writeStatus :: forall res m. MonadEffect m => Status -> Handler res m StatusLineOpen HeadersOpen Unit
-writeStatus (Status { code, reasonPhrase }) =
+writeStatus (Status { code, reason }) =
   Handler \res ->
     liftEffect do
       HTTP.setStatusCode res code
-      HTTP.setStatusMessage res reasonPhrase
+      HTTP.setStatusMessage res reason
 
 writeHeader :: forall res m. MonadEffect m => String -> String -> Handler res m HeadersOpen HeadersOpen Unit
 writeHeader name value =
@@ -72,78 +77,49 @@ send str =
           Stream.writeString stream Encoding.UTF8 str mempty
 
 respondWithMedia ::
-  forall a res m.
-  IsMedia a =>
+  forall m rep a res.
+  MediaCodec rep a =>
   MonadEffect m =>
   Status ->
+  Proxy rep ->
   a ->
   Handler res m StatusLineOpen ResponseEnded Unit
-respondWithMedia status response = Ix.do
+respondWithMedia status rep response = Ix.do
   writeStatus status
-  contentType (mediaType (Proxy :: _ a))
+  traverse_ contentType (mediaType rep)
   closeHeaders
-  send (encodeMedia response)
+  send (encodeMedia rep response)
 
-respondOK ::
-  forall a res m.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( ok :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondOK = respondWithMedia Status.statusOK
+class BuildResponder rep a | rep -> a where
+  buildResponder :: Proxy rep -> a
 
-respondCreated ::
-  forall a res m.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( created :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondCreated = respondWithMedia Status.statusCreated
+instance buildResponders ::
+  ( RowToList responses responseList
+  , MonadEffect m
+  , BuildResponderRecord responseList m responders
+  ) =>
+  BuildResponder { | responses } { | responders } where
+  buildResponder _ = Builder.build (buildResponderRecord (RLProxy :: _ responseList)) {}
 
-respondNoContent ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( noContent :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondNoContent = respondWithMedia Status.statusNoContent
+class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: #Type) | responses -> m responders where
+  buildResponderRecord :: RLProxy responses -> Builder {} { | responders }
 
-respondBadRequest ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( badRequest :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondBadRequest = respondWithMedia Status.statusBadRequest
+instance buildResponderRecordNil :: BuildResponderRecord Nil m () where
+  buildResponderRecord _ = identity
 
-respondUnauthorized ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( unauthorized :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondUnauthorized = respondWithMedia Status.statusUnauthorized
+instance buildResponderRecordCons ::
+  ( IsSymbol status
+  , ResponseStatus status
+  , MediaCodec responseRep response
+  , Cons status responseRep res' res
+  , MonadEffect m
+  , Lacks status responders'
+  , Cons status (response -> Handler res m StatusLineOpen ResponseEnded Unit) responders' responders
+  , BuildResponderRecord responseList m responders'
+  ) =>
+  BuildResponderRecord (Cons status responseRep responseList) m responders where
+  buildResponderRecord _ = Builder.insert status responder <<< buildResponderRecord (RLProxy :: _ responseList)
+    where
+    status = SProxy :: _ status
 
-respondForbidden ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( forbidden :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondForbidden = respondWithMedia Status.statusForbidden
-
-respondNotFound ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( notFound :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondNotFound = respondWithMedia Status.statusNotFound
-
-respondConflict ::
-  forall m res a.
-  IsMedia a =>
-  MonadEffect m =>
-  a ->
-  Handler ( conflict :: a | res ) m StatusLineOpen ResponseEnded Unit
-respondConflict = respondWithMedia Status.statusConflict
+    responder = respondWithMedia (toStatus status) (Proxy :: _ responseRep)
