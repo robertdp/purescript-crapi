@@ -32,7 +32,8 @@ data ResponseEnded
 type Header
   = Tuple String String
 
-type FullHandler m = Handler m StatusLineOpen ResponseEnded Unit
+type FullHandler m
+  = Handler m StatusLineOpen ResponseEnded Unit
 
 writeStatus :: forall m. MonadEffect m => Status -> Handler m StatusLineOpen HeadersOpen Unit
 writeStatus (Status { code, reason }) =
