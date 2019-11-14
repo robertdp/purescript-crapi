@@ -3,29 +3,29 @@
 #### `Handler`
 
 ``` purescript
-newtype Handler (res :: # Type) m from to a
+newtype Handler m from to a
   = Handler (Response -> m a)
 ```
 
 ##### Instances
 ``` purescript
-(Monad m) => IxFunctor (Handler res m)
-(Monad m) => IxApply (Handler res m)
-(Monad m) => IxApplicative (Handler res m)
-(Monad m) => IxBind (Handler res m)
-(Monad m) => IxMonad (Handler res m)
-(Monad m) => IxMonadTrans (Handler res)
-(Monad m) => Functor (Handler res m x x)
-(Monad m) => Apply (Handler res m x x)
-(Monad m) => Applicative (Handler res m x x)
-(Monad m) => Bind (Handler res m x x)
-(Monad m) => Monad (Handler res m x x)
+(Monad m) => IxFunctor (Handler m)
+(Monad m) => IxApply (Handler m)
+(Monad m) => IxApplicative (Handler m)
+(Monad m) => IxBind (Handler m)
+(Monad m) => IxMonad (Handler m)
+(Monad m) => IxMonadTrans Handler
+(Monad m) => Functor (Handler m x x)
+(Monad m) => Apply (Handler m x x)
+(Monad m) => Applicative (Handler m x x)
+(Monad m) => Bind (Handler m x x)
+(Monad m) => Monad (Handler m x x)
 ```
 
 #### `runHandler`
 
 ``` purescript
-runHandler :: forall res m from to a. Handler res m from to a -> Response -> m a
+runHandler :: forall m from to a. Handler m from to a -> Response -> m a
 ```
 
 

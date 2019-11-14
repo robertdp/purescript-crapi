@@ -30,52 +30,58 @@ data ResponseEnded
 type Header = Tuple String String
 ```
 
+#### `FullHandler`
+
+``` purescript
+type FullHandler m = Handler m StatusLineOpen ResponseEnded Unit
+```
+
 #### `writeStatus`
 
 ``` purescript
-writeStatus :: forall res m. MonadEffect m => Status -> Handler res m StatusLineOpen HeadersOpen Unit
+writeStatus :: forall m. MonadEffect m => Status -> Handler m StatusLineOpen HeadersOpen Unit
 ```
 
 #### `writeHeader`
 
 ``` purescript
-writeHeader :: forall res m. MonadEffect m => String -> String -> Handler res m HeadersOpen HeadersOpen Unit
+writeHeader :: forall m. MonadEffect m => String -> String -> Handler m HeadersOpen HeadersOpen Unit
 ```
 
 #### `closeHeaders`
 
 ``` purescript
-closeHeaders :: forall res m. Monad m => Handler res m HeadersOpen BodyOpen Unit
+closeHeaders :: forall m. Monad m => Handler m HeadersOpen BodyOpen Unit
 ```
 
 #### `headers`
 
 ``` purescript
-headers :: forall f res m. Foldable f => MonadEffect m => f Header -> Handler res m HeadersOpen BodyOpen Unit
+headers :: forall f m. Foldable f => MonadEffect m => f Header -> Handler m HeadersOpen BodyOpen Unit
 ```
 
 #### `contentType`
 
 ``` purescript
-contentType :: forall res m. MonadEffect m => MediaType -> Handler res m HeadersOpen HeadersOpen Unit
+contentType :: forall m. MonadEffect m => MediaType -> Handler m HeadersOpen HeadersOpen Unit
 ```
 
 #### `withResponseStream`
 
 ``` purescript
-withResponseStream :: forall res m a. MonadEffect m => (Writable () -> m a) -> Handler res m BodyOpen ResponseEnded a
+withResponseStream :: forall m a. MonadEffect m => (Writable () -> m a) -> Handler m BodyOpen ResponseEnded a
 ```
 
 #### `send`
 
 ``` purescript
-send :: forall res m. MonadEffect m => String -> Handler res m BodyOpen ResponseEnded Unit
+send :: forall m. MonadEffect m => String -> Handler m BodyOpen ResponseEnded Unit
 ```
 
 #### `respondWithMedia`
 
 ``` purescript
-respondWithMedia :: forall m rep a res. MediaCodec rep a => MonadEffect m => Status -> Proxy rep -> a -> Handler res m StatusLineOpen ResponseEnded Unit
+respondWithMedia :: forall m rep a. MediaCodec rep a => MonadEffect m => Status -> Proxy rep -> a -> Handler m StatusLineOpen ResponseEnded Unit
 ```
 
 #### `BuildResponder`
@@ -93,14 +99,14 @@ class BuildResponder rep a | rep -> a where
 #### `BuildResponderRecord`
 
 ``` purescript
-class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: # Type) | responses -> m responders where
-  buildResponderRecord :: RLProxy responses -> Builder (Record ()) (Record responders)
+class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: # Type) | responses m -> responders where
+  buildResponderRecord :: RLProxy responses -> Proxy2 m -> Builder (Record ()) (Record responders)
 ```
 
 ##### Instances
 ``` purescript
 BuildResponderRecord Nil m ()
-(IsSymbol status, ResponseStatus status, MediaCodec responseRep response, Cons status responseRep res' res, MonadEffect m, Lacks status responders', Cons status (response -> Handler res m StatusLineOpen ResponseEnded Unit) responders' responders, BuildResponderRecord responseList m responders') => BuildResponderRecord (Cons status responseRep responseList) m responders
+(IsSymbol status, ResponseStatus status, MediaCodec responseRep response, MonadEffect m, Lacks status responders', Cons status (response -> FullHandler m) responders' responders, BuildResponderRecord responseList m responders') => BuildResponderRecord (Cons status responseRep responseList) m responders
 ```
 
 

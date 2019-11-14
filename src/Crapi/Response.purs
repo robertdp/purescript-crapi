@@ -19,7 +19,7 @@ import Prim.RowList (class RowToList, kind RowList, Cons, Nil)
 import Record.Builder (Builder)
 import Record.Builder as Builder
 import Type.Data.RowList (RLProxy(..))
-import Type.Proxy (Proxy(..))
+import Type.Proxy (Proxy(..), Proxy2(..))
 
 data StatusLineOpen
 
@@ -32,35 +32,37 @@ data ResponseEnded
 type Header
   = Tuple String String
 
-writeStatus :: forall res m. MonadEffect m => Status -> Handler res m StatusLineOpen HeadersOpen Unit
+type FullHandler m = Handler m StatusLineOpen ResponseEnded Unit
+
+writeStatus :: forall m. MonadEffect m => Status -> Handler m StatusLineOpen HeadersOpen Unit
 writeStatus (Status { code, reason }) =
   Handler \res ->
     liftEffect do
       HTTP.setStatusCode res code
       HTTP.setStatusMessage res reason
 
-writeHeader :: forall res m. MonadEffect m => String -> String -> Handler res m HeadersOpen HeadersOpen Unit
+writeHeader :: forall m. MonadEffect m => String -> String -> Handler m HeadersOpen HeadersOpen Unit
 writeHeader name value =
   Handler \res ->
     liftEffect do
       HTTP.setHeader res name value
 
-closeHeaders :: forall res m. Monad m => Handler res m HeadersOpen BodyOpen Unit
+closeHeaders :: forall m. Monad m => Handler m HeadersOpen BodyOpen Unit
 closeHeaders = Handler \_ -> pure unit
 
-headers :: forall f res m. Foldable f => MonadEffect m => f Header -> Handler res m HeadersOpen BodyOpen Unit
+headers :: forall f m. Foldable f => MonadEffect m => f Header -> Handler m HeadersOpen BodyOpen Unit
 headers hs = Ix.do
   traverse_ (uncurry writeHeader) hs
   closeHeaders
 
-contentType :: forall res m. MonadEffect m => MediaType -> Handler res m HeadersOpen HeadersOpen Unit
+contentType :: forall m. MonadEffect m => MediaType -> Handler m HeadersOpen HeadersOpen Unit
 contentType mediaType = writeHeader "Content-Type" (unwrap mediaType)
 
 withResponseStream ::
-  forall res m a.
+  forall m a.
   MonadEffect m =>
   (Stream.Writable () -> m a) ->
-  Handler res m BodyOpen ResponseEnded a
+  Handler m BodyOpen ResponseEnded a
 withResponseStream f =
   Handler \res -> do
     let
@@ -69,7 +71,7 @@ withResponseStream f =
     liftEffect do Stream.end s mempty
     pure a
 
-send :: forall res m. MonadEffect m => String -> Handler res m BodyOpen ResponseEnded Unit
+send :: forall m. MonadEffect m => String -> Handler m BodyOpen ResponseEnded Unit
 send str =
   withResponseStream \stream ->
     void
@@ -77,13 +79,13 @@ send str =
           Stream.writeString stream Encoding.UTF8 str mempty
 
 respondWithMedia ::
-  forall m rep a res.
+  forall m rep a.
   MediaCodec rep a =>
   MonadEffect m =>
   Status ->
   Proxy rep ->
   a ->
-  Handler res m StatusLineOpen ResponseEnded Unit
+  Handler m StatusLineOpen ResponseEnded Unit
 respondWithMedia status rep response = Ix.do
   writeStatus status
   traverse_ contentType (mediaType rep)
@@ -99,26 +101,25 @@ instance buildResponders ::
   , BuildResponderRecord responseList m responders
   ) =>
   BuildResponder { | responses } { | responders } where
-  buildResponder _ = Builder.build (buildResponderRecord (RLProxy :: _ responseList)) {}
+  buildResponder _ = Builder.build (buildResponderRecord (RLProxy :: _ responseList) (Proxy2 :: _ m)) {}
 
-class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: #Type) | responses -> m responders where
-  buildResponderRecord :: RLProxy responses -> Builder {} { | responders }
+class BuildResponderRecord (responses :: RowList) (m :: Type -> Type) (responders :: #Type) | responses m -> responders where
+  buildResponderRecord :: RLProxy responses -> Proxy2 m -> Builder {} { | responders }
 
 instance buildResponderRecordNil :: BuildResponderRecord Nil m () where
-  buildResponderRecord _ = identity
+  buildResponderRecord _ _ = identity
 
 instance buildResponderRecordCons ::
   ( IsSymbol status
   , ResponseStatus status
   , MediaCodec responseRep response
-  , Cons status responseRep res' res
   , MonadEffect m
   , Lacks status responders'
-  , Cons status (response -> Handler res m StatusLineOpen ResponseEnded Unit) responders' responders
+  , Cons status (response -> FullHandler m) responders' responders
   , BuildResponderRecord responseList m responders'
   ) =>
   BuildResponderRecord (Cons status responseRep responseList) m responders where
-  buildResponderRecord _ = Builder.insert status responder <<< buildResponderRecord (RLProxy :: _ responseList)
+  buildResponderRecord _ m = Builder.insert status responder <<< buildResponderRecord (RLProxy :: _ responseList) m
     where
     status = SProxy :: _ status
 
