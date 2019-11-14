@@ -126,16 +126,14 @@ let overrides = {=}
 let additions =
     { apiary =
         { dependencies =
-            [ "aff"
-            , "console"
-            , "media-types"
+            [ "media-types"
             , "milkis"
             , "simple-json"
             ]
         , repo =
             "https://github.com/robertdp/purescript-apiary.git"
         , version =
-            "f981fb7758e3676d40ecc7607ffa44a4cee39434"
+            "01ae9b792df21fcded56c340f7ff9631235854f3"
         }
     }
 
