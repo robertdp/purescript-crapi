@@ -85,7 +85,7 @@ respondWithMedia ::
   Status ->
   Proxy rep ->
   a ->
-  Handler m StatusLineOpen ResponseEnded Unit
+  FullHandler m
 respondWithMedia status rep response = Ix.do
   writeStatus status
   traverse_ contentType (mediaType rep)

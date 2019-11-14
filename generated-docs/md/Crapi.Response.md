@@ -81,7 +81,7 @@ send :: forall m. MonadEffect m => String -> Handler m BodyOpen ResponseEnded Un
 #### `respondWithMedia`
 
 ``` purescript
-respondWithMedia :: forall m rep a. MediaCodec rep a => MonadEffect m => Status -> Proxy rep -> a -> Handler m StatusLineOpen ResponseEnded Unit
+respondWithMedia :: forall m rep a. MediaCodec rep a => MonadEffect m => Status -> Proxy rep -> a -> FullHandler m
 ```
 
 #### `BuildResponder`
