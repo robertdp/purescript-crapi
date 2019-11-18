@@ -1,67 +1,132 @@
 module Crapi.Request where
 
 import Prelude
-import Control.Comonad (extract)
+
+import Apiary.Url (class UrlParam, decodeUrlParam, encodeUrlParam)
+import Control.Alt ((<|>))
 import Control.Monad.Error.Class (throwError)
-import Data.Bifunctor (bimap, lmap)
-import Data.Either (Either)
-import Data.Maybe (maybe)
+import Control.Monad.Except (withExceptT)
+import Data.Array as Array
+import Data.Maybe (Maybe(..), maybe)
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
-import Foreign (ForeignError(..), renderForeignError)
+import Data.Traversable (sequence)
+import Foreign (F, Foreign, ForeignError(..))
 import Foreign.Object (Object)
 import Foreign.Object as Object
 import Prim.Row (class Cons, class Lacks)
 import Prim.RowList (class RowToList, Nil, Cons)
 import Record.Builder (Builder)
 import Record.Builder as Builder
-import Simple.JSON (class ReadForeign, E, readJSON)
+import Simple.JSON (class ReadForeign, read', readJSON')
 import Type.Data.RowList (RLProxy(..))
 
-type RouterParams
+type PathParams
   = Object String
 
-class DecodeParams params where
-  decodeParams :: RouterParams -> Either String params
+type QueryParams
+  = Object Foreign
 
-instance decodeParamsUnit :: DecodeParams Unit where
-  decodeParams _ = pure unit
+class DecodePathParams params where
+  decodePathParams :: PathParams -> F params
 
-instance decodeParamsRecord :: (RowToList r rl, DecodeParamRecord r rl) => DecodeParams (Record r) where
-  decodeParams =
-    decodeParamRecord (RLProxy :: _ rl)
-      >>> bimap (extract >>> renderForeignError) (flip Builder.build {})
+instance decodePathParamsRecord ::
+  ( RowToList r rl
+  , DecodePathParamRecord r rl
+  ) =>
+  DecodePathParams (Record r) where
+  decodePathParams =
+    decodePathParamRecord (RLProxy :: _ rl)
+      >>> map (flip Builder.build {})
 
-class DecodeParamRecord r rl | rl -> r where
-  decodeParamRecord :: RLProxy rl -> RouterParams -> E (Builder {} (Record r))
+class DecodePathParamRecord r rl | rl -> r where
+  decodePathParamRecord :: RLProxy rl -> PathParams -> F (Builder {} (Record r))
 
-instance decodeParamRecordNil :: DecodeParamRecord () Nil where
-  decodeParamRecord _ _ = pure identity
+instance decodePathParamRecordNil :: DecodePathParamRecord () Nil where
+  decodePathParamRecord _ _ = pure identity
 
-instance decodeParamRecordConsString ::
+instance decodePathParamRecordConsString ::
   ( Cons l String r_ r
-  , DecodeParamRecord r_ rl_
+  , DecodePathParamRecord r_ rl_
   , IsSymbol l
   , Lacks l r_
   ) =>
-  DecodeParamRecord r (Cons l String rl_) where
-  decodeParamRecord _ f = do
-    builder <- decodeParamRecord (RLProxy :: RLProxy rl_) f
+  DecodePathParamRecord r (Cons l String rl_) where
+  decodePathParamRecord _ f = do
+    builder <- decodePathParamRecord (RLProxy :: RLProxy rl_) f
     let
       l = reflectSymbol (SProxy :: SProxy l)
     a <- maybe (throwError (pure (ErrorAtProperty l (ForeignError "missing param")))) pure (Object.lookup l f)
     pure (builder >>> Builder.insert (SProxy :: SProxy l) a)
-else instance decodeParamRecordCons ::
+else instance decodePathParamRecordCons ::
   ( Cons l a r_ r
-  , DecodeParamRecord r_ rl_
+  , DecodePathParamRecord r_ rl_
   , IsSymbol l
   , Lacks l r_
   , ReadForeign a
   ) =>
-  DecodeParamRecord r (Cons l a rl_) where
-  decodeParamRecord _ f = do
-    builder <- decodeParamRecord (RLProxy :: RLProxy rl_) f
+  DecodePathParamRecord r (Cons l a rl_) where
+  decodePathParamRecord _ f = do
+    builder <- decodePathParamRecord (RLProxy :: RLProxy rl_) f
     let
       l = reflectSymbol (SProxy :: SProxy l)
     f_ <- maybe (throwError (pure (ErrorAtProperty l (ForeignError "missing param")))) pure (Object.lookup l f)
-    a <- lmap (map (ErrorAtProperty l)) (readJSON f_)
+    a <- withExceptT (map (ErrorAtProperty l)) (readJSON' f_)
     pure (builder >>> Builder.insert (SProxy :: SProxy l) a)
+
+class DecodeQueryParams params where
+  decodeQueryParams :: QueryParams -> F params
+
+instance decodeQueryParamsRecord ::
+  ( RowToList r rl
+  -- , BuildQueryParams r rl
+  , DecodeQueryParamRecord r rl
+  ) =>
+  DecodeQueryParams (Record r) where
+    decodeQueryParams =
+      decodeQueryParamRecord (RLProxy :: _ rl)
+        >>> map (flip Builder.build {})
+
+class DecodeQueryParamRecord r rl | rl -> r where
+  decodeQueryParamRecord :: RLProxy rl -> QueryParams -> F (Builder {} (Record r))
+
+instance decodeQueryParamRecordNil :: DecodeQueryParamRecord () Nil where
+  decodeQueryParamRecord _ _ = pure identity
+
+instance decodeQueryParamRecordConsArray ::
+  ( IsSymbol name
+  , UrlParam value
+  , Cons name (Array value) params' params
+  , Lacks name params'
+  , DecodeQueryParamRecord params' paramList
+  ) =>
+  DecodeQueryParamRecord params (Cons name (Array value) paramList) where
+  decodeQueryParamRecord _ params = do
+    let
+      name = SProxy :: _ name
+      prop = encodeUrlParam $ reflectSymbol name
+    builder <- decodeQueryParamRecord (RLProxy :: _ paramList) params
+    value <- case Object.lookup prop params of
+      Nothing -> pure []
+      Just a -> do
+        values <- read' a <|> Array.singleton <$> read' a
+        sequence $ decodeUrlParam <$> values
+    pure $ Builder.insert name value <<< builder
+else instance decodeQueryParamRecordCons ::
+  ( IsSymbol name
+  , UrlParam value
+  , Cons name (Maybe value) params' params
+  , Lacks name params'
+  , DecodeQueryParamRecord params' paramList
+  ) =>
+  DecodeQueryParamRecord params (Cons name (Maybe value) paramList) where
+    decodeQueryParamRecord _ params = do
+      let
+        name = SProxy :: _ name
+        prop = encodeUrlParam $ reflectSymbol name
+      builder <- decodeQueryParamRecord (RLProxy :: _ paramList) params
+      value <- case Object.lookup prop params of
+        Nothing -> pure Nothing
+        Just a -> do
+          str <- read' a
+          Just <$> decodeUrlParam str
+      pure $ Builder.insert name value <<< builder

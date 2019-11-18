@@ -133,7 +133,7 @@ let additions =
         , repo =
             "https://github.com/robertdp/purescript-apiary.git"
         , version =
-            "01ae9b792df21fcded56c340f7ff9631235854f3"
+            "3c1a48ee3512d3fac9ac3cbd19b4712987cbc08d"
         }
     }
 
