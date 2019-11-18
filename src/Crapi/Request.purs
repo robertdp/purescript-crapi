@@ -77,9 +77,7 @@ class DecodeQueryParams params where
   decodeQueryParams :: QueryParams -> F params
 
 instance decodeQueryParamsRecord ::
-  ( RowToList r rl
-  -- , BuildQueryParams r rl
-  , DecodeQueryParamRecord r rl
+  ( DecodeQueryParamRecord r rl
   ) =>
   DecodeQueryParams (Record r) where
     decodeQueryParams =
