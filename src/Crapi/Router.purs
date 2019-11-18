@@ -59,9 +59,13 @@ createServer fallback (Router runRouter) =
 
 foreign import _on :: EffectFn4 RouterInstance String String (EffectFn3 Request Response (Object String) Unit) Unit
 
+type Method = String
+
+type Path = String
+
 on ::
-  String ->
-  String ->
+  Method ->
+  Path ->
   (Request -> Response -> Object String -> Effect Unit) ->
   Router Unit
 on method path handler = Router \router -> runEffectFn4 _on router method path (mkEffectFn3 handler)
