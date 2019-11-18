@@ -25,7 +25,7 @@ createServer :: forall m. MonadEffect m => (Request -> Response -> Effect Unit) 
 #### `on`
 
 ``` purescript
-on :: Method -> Path -> (Request -> Response -> Object String -> Effect Unit) -> Router Unit
+on :: Method -> Path -> (Request -> Response -> PathParams -> Effect Unit) -> Router Unit
 ```
 
 

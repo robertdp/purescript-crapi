@@ -57,15 +57,17 @@ createServer fallback (Router runRouter) =
     HTTP.createServer \req res -> do
       lookup req res router
 
-foreign import _on :: EffectFn4 RouterInstance String String (EffectFn3 Request Response (Object String) Unit) Unit
+foreign import _on :: EffectFn4 RouterInstance String String (EffectFn3 Request Response PathParams Unit) Unit
 
 type Method = String
 
 type Path = String
 
+type PathParams = Object String
+
 on ::
   Method ->
   Path ->
-  (Request -> Response -> Object String -> Effect Unit) ->
+  (Request -> Response -> PathParams -> Effect Unit) ->
   Router Unit
 on method path handler = Router \router -> runEffectFn4 _on router method path (mkEffectFn3 handler)
