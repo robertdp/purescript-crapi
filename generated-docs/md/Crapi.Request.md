@@ -47,7 +47,7 @@ class DecodeQueryParams params  where
 
 ##### Instances
 ``` purescript
-(RowToList r rl, DecodeQueryParamRecord r rl) => DecodeQueryParams (Record r)
+(DecodeQueryParamRecord r rl) => DecodeQueryParams (Record r)
 ```
 
 #### `DecodeQueryParamRecord`
