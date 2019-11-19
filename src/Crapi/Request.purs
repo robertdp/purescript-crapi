@@ -1,24 +1,45 @@
 module Crapi.Request where
 
 import Prelude
-
+import Apiary.Media (class MediaCodec, decodeMedia)
 import Apiary.Url (class UrlParam, decodeUrlParam, encodeUrlParam)
 import Control.Alt ((<|>))
 import Control.Monad.Error.Class (throwError)
-import Control.Monad.Except (withExceptT)
+import Control.Monad.Except (lift, runExcept, runExceptT, withExceptT)
 import Data.Array as Array
+import Data.Either (Either(..), either)
 import Data.Maybe (Maybe(..), maybe)
+import Data.Nullable as Nullable
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
 import Data.Traversable (sequence)
-import Foreign (F, Foreign, ForeignError(..))
+import Effect.Aff (Aff, launchAff_)
+import Effect.Aff.AVar as AVar
+import Effect.Class (liftEffect)
+import Effect.Exception (catchException)
+import Foreign (F, Foreign, ForeignError(..), MultipleErrors, renderForeignError)
 import Foreign.Object (Object)
 import Foreign.Object as Object
+import Node.Buffer (Buffer)
+import Node.Buffer as Buffer
+import Node.Encoding as Encoding
+import Node.HTTP as HTTP
+import Node.Stream as Stream
+import Node.URL as URL
 import Prim.Row (class Cons, class Lacks)
 import Prim.RowList (class RowToList, Nil, Cons)
 import Record.Builder (Builder)
 import Record.Builder as Builder
 import Simple.JSON (class ReadForeign, read', readJSON')
 import Type.Data.RowList (RLProxy(..))
+import Type.Proxy (Proxy)
+import Unsafe.Coerce (unsafeCoerce)
+
+type Request params query body
+  = { params :: params
+    , query :: query
+    , headers :: Object String
+    , body :: body
+    }
 
 type PathParams
   = Object String
@@ -78,11 +99,11 @@ class DecodeQueryParams params where
 
 instance decodeQueryParamsRecord ::
   ( DecodeQueryParamRecord r rl
-  ) =>
+    ) =>
   DecodeQueryParams (Record r) where
-    decodeQueryParams =
-      decodeQueryParamRecord (RLProxy :: _ rl)
-        >>> map (flip Builder.build {})
+  decodeQueryParams =
+    decodeQueryParamRecord (RLProxy :: _ rl)
+      >>> map (flip Builder.build {})
 
 class DecodeQueryParamRecord r rl | rl -> r where
   decodeQueryParamRecord :: RLProxy rl -> QueryParams -> F (Builder {} (Record r))
@@ -101,6 +122,7 @@ instance decodeQueryParamRecordConsArray ::
   decodeQueryParamRecord _ params = do
     let
       name = SProxy :: _ name
+
       prop = encodeUrlParam $ reflectSymbol name
     builder <- decodeQueryParamRecord (RLProxy :: _ paramList) params
     value <- case Object.lookup prop params of
@@ -117,14 +139,85 @@ else instance decodeQueryParamRecordCons ::
   , DecodeQueryParamRecord params' paramList
   ) =>
   DecodeQueryParamRecord params (Cons name (Maybe value) paramList) where
-    decodeQueryParamRecord _ params = do
+  decodeQueryParamRecord _ params = do
+    let
+      name = SProxy :: _ name
+
+      prop = encodeUrlParam $ reflectSymbol name
+    builder <- decodeQueryParamRecord (RLProxy :: _ paramList) params
+    value <- case Object.lookup prop params of
+      Nothing -> pure Nothing
+      Just a -> do
+        str <- read' a
+        Just <$> decodeUrlParam str
+    pure $ Builder.insert name value <<< builder
+
+readBodyAsBuffer :: HTTP.Request -> Aff Buffer
+readBodyAsBuffer request = do
+  let
+    stream = HTTP.requestAsStream request
+  bodyResult <- AVar.empty
+  chunks <- AVar.new []
+  fillResult <-
+    liftEffect
+      $ catchException (pure <<< Left) (Right <$> fillBody stream chunks bodyResult)
+  body <- AVar.take bodyResult
+  either throwError pure (fillResult *> body)
+  where
+  fillBody stream chunks bodyResult = do
+    Stream.onData stream \chunk ->
       let
-        name = SProxy :: _ name
-        prop = encodeUrlParam $ reflectSymbol name
-      builder <- decodeQueryParamRecord (RLProxy :: _ paramList) params
-      value <- case Object.lookup prop params of
-        Nothing -> pure Nothing
-        Just a -> do
-          str <- read' a
-          Just <$> decodeUrlParam str
-      pure $ Builder.insert name value <<< builder
+        modification = do
+          v <- AVar.take chunks
+          AVar.put (v <> [ chunk ]) chunks
+      in
+        launchAff_ modification
+    Stream.onError stream
+      $ launchAff_
+      <<< flip AVar.put bodyResult
+      <<< Left
+    Stream.onEnd stream $ launchAff_
+      $ AVar.take chunks
+      >>= concat'
+      >>= (pure <<< Right)
+      >>= flip AVar.put bodyResult
+
+  concat' = liftEffect <<< Buffer.concat
+
+decodeRequest ::
+  forall params query rep body.
+  DecodePathParams params =>
+  DecodeQueryParams query =>
+  MediaCodec rep body =>
+  Proxy rep ->
+  PathParams ->
+  HTTP.Request ->
+  Aff (Either { params :: Array String, query :: Array String, body :: Array String } (Request params query body))
+decodeRequest rep pathParams request =
+  runExceptT do
+    requestBody <- lift $ liftEffect <<< Buffer.toString Encoding.UTF8 =<< readBodyAsBuffer request
+    let
+      url = URL.parse $ HTTP.requestURL request
+
+      queryParams = maybe Object.empty (coerceQuery <<< URL.parseQueryString) $ Nullable.toMaybe url.query
+
+      decodedParams = runExcept $ decodePathParams pathParams
+
+      decodedQuery = runExcept $ decodeQueryParams queryParams
+
+      headers = HTTP.requestHeaders request
+
+      decodedBody = runExcept $ decodeMedia rep requestBody
+    case decodedParams, decodedQuery, decodedBody of
+      Right params, Right query, Right body -> pure { params, query, headers, body }
+      _, _, _ ->
+        throwError
+          { params: extractErrors decodedParams
+          , query: extractErrors decodedQuery
+          , body: extractErrors decodedBody
+          }
+  where
+  coerceQuery = unsafeCoerce :: URL.Query -> QueryParams
+
+  extractErrors :: forall a. Either MultipleErrors a -> Array String
+  extractErrors = either (Array.fromFoldable >>> map renderForeignError) (const mempty)
