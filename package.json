@@ -7,7 +7,7 @@
     "test": "test"
   },
   "dependencies": {
-    "find-my-way": "^2.2.1"
+    "find-my-way": "^2.2.5"
   },
   "devDependencies": {
     "purescript": "^0.13.5",
